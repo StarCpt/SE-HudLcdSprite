@@ -53,7 +53,7 @@ public class Patch_MyRender11_DrawGameScene
 
     private static void CopyReplaceNoAlpha(IRtvBindable destination, ISrvBindable source, MyViewport viewport, bool shouldStretch = false)
     {
-        MyImmediateRC.RC.SetBlendState(MyBlendStateManager.BlendReplaceNoAlphaChannel);
+        MyImmediateRC.RC.SetBlendState(MyBlendStateManager.BlendAlphaPremultNoAlphaChannel);
 
         MyImmediateRC.RC.SetInputLayout(null);
         if (source.Size != destination.Size || shouldStretch)

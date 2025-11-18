@@ -60,7 +60,8 @@ public class Plugin : IPlugin
         }
     }
 
-    public static MyConcurrentList<LcdConfig> Lcds = [];
+    public static readonly MyConcurrentList<LcdConfig> Lcds = [];
+    public static readonly HashSet<MyTextPanelComponent> ActiveSurfaces = [];
 
     private static void UpdateLCDs(MyCubeGrid grid)
     {
@@ -117,15 +118,16 @@ public class Plugin : IPlugin
                 // change [-1,1] top left, [1,-1] bottom right used by hudlcd to [0,0], [1,1] used by rendering
                 pos.X = (pos.X + 1) * 0.5;
                 pos.Y = (-pos.Y + 1) * 0.5;
-                scale *= 0.68;
 
+                var surface = lcd.SurfaceCount is 0 ? lcd.PanelComponent : (MyTextPanelComponent)lcd.GetSurface(surfaceIndex);
                 Lcds.Add(new LcdConfig
                 {
                     Block = lcd,
-                    Surface = lcd.SurfaceCount is 0 ? lcd.PanelComponent : lcd.GetSurface(surfaceIndex),
+                    Surface = surface,
                     TopLeft = pos,
                     Scale = scale,
                 });
+                ActiveSurfaces.Add(surface);
 
                 surfaceIndex++;
             }
@@ -135,6 +137,7 @@ public class Plugin : IPlugin
     private static void ClearLCDs()
     {
         Lcds.Clear();
+        ActiveSurfaces.Clear();
     }
 
     public void Dispose()

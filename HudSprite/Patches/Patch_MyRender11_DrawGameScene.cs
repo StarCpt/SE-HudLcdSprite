@@ -1,5 +1,4 @@
 ﻿using HarmonyLib;
-using Sandbox.Game.Components;
 using Sandbox.Game.Entities.Blocks;
 using System;
 using System.Collections.Generic;
@@ -38,7 +37,9 @@ public class Patch_MyRender11_DrawGameScene
                 // get srv/rtv
                 var comp = (MyTextPanelComponent)lcd.Surface;
                 if (!TryGetRenderTexture(comp, out var tex))
+                {
                     return;
+                }
 
                 var vp = new MyViewport(
                     (float)lcd.TopLeft.X * renderTarget.Size.X,

@@ -4,15 +4,11 @@ using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
 using Sandbox.Graphics;
-using Sandbox.ModAPI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using VRage.Game.Definitions;
 using VRage.Game.GUI.TextPanel;
 using VRage.Plugins;
 using VRage.Render11.Common;
@@ -34,12 +30,9 @@ public class Plugin : IPlugin
 {
     const string HUDLCD_TAG = "hudlcd";
     public const string OFFSCREEN_TEX_PREFIX = "HUDSPRITE_";
-    static readonly char _configSeparator = ':';
-
-    // default settings
+    static readonly char[] _newline = ['\n'];
+    static readonly char[] _configSeparator = [':'];
     static readonly Vector2D _defaultPos = new Vector2D(-0.98, -0.2);
-    static readonly double _defaultScale = 0.8;
-    static readonly bool _defaultTextShadow = false;
 
     static readonly Dictionary<string, Color> _colorByName =
         typeof(Color).GetProperties(BindingFlags.Public | BindingFlags.Static)
@@ -52,127 +45,90 @@ public class Plugin : IPlugin
     }
 
     private int _lastLcdGather = -1;
+    private readonly List<MyTextPanelComponent> _lcdsToRemove = [];
 
     public void Update()
     {
         if (MySession.Static is null || !MySession.Static.Ready)
         {
+            ClearLcds();
             _lastLcdGather = -1;
             return;
         }
 
-        if (MySession.Static?.ControlledEntity is MyCockpit cockpit)
+        if (MySession.Static.ControlledEntity is MyCockpit cockpit)
         {
             if (MySession.Static.GameplayFrameCounter - 100 > _lastLcdGather)
             {
-                UpdateLCDs(cockpit.CubeGrid);
+                GatherNewLcds(cockpit.CubeGrid);
                 _lastLcdGather = MySession.Static.GameplayFrameCounter;
             }
         }
         else
         {
-            ClearLCDs();
+            ClearLcds();
             _lastLcdGather = -1;
         }
 
-        DrawLCDs();
+        // update surfaces
+        bool update10 = MySession.Static.GameplayFrameCounter % 10 == 0;
+        foreach (var data in Surfaces.Values)
+        {
+            if (!data.Update(update10))
+            {
+                _lcdsToRemove.Add(data.Comp);
+            }
+        }
+
+        // remove invalid lcds
+        for (int i = _lcdsToRemove.Count - 1; i >= 0; i--)
+        {
+            if (Surfaces.TryRemove(_lcdsToRemove[i], out var data))
+            {
+                data.Dispose();
+            }
+            _lcdsToRemove.RemoveAt(i);
+        }
     }
 
     public static readonly ConcurrentDictionary<MyTextPanelComponent, HudSpriteData> Surfaces = [];
     public static readonly HashSet<string> CreatedTextures = [];
 
-    private static void UpdateLCDs(MyCubeGrid grid)
+    private static void GatherNewLcds(MyCubeGrid grid)
     {
-        var surfacesToRemove = Surfaces.Keys.ToList();
-
-        // read custom data
-        foreach (var block in grid.GetFatBlocks<MyFunctionalBlock>())
+        foreach (var block in grid.GetFatBlocks<MyTerminalBlock>())
         {
-            if (block.CustomData == null)
+            if (block.CustomData == null || block is not Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider surfaceProvider)
             {
                 continue;
             }
 
-            string[] lines = block.CustomData.ToLower().Split('\n');
+            string[] lines = block.CustomData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
             int surfaceIndex = 0;
             foreach (var line in lines)
             {
-                if (surfaceIndex >= Math.Max(1, block.SurfaceCount))
+                if (surfaceIndex >= Math.Max(1, surfaceProvider.SurfaceCount))
                     break;
 
                 if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
                     continue;
 
-                if ((block as IMyTextSurfaceProvider)?.GetSurface(surfaceIndex) is not MyTextPanelComponent surface)
+                if (surfaceProvider.GetSurface(surfaceIndex) is not MyTextPanelComponent surface)
                     continue;
 
-                Vector2D pos = _defaultPos;
-                double scale = surface.FontSize;
-                Color textColor = surface.FontColor;
-                bool textShadow = _defaultTextShadow;
+                if (Surfaces.ContainsKey(surface))
+                    continue;
 
-                string[] args = line.Trim().Split([_configSeparator], 6);
-                for (int i = 1; i < Math.Min(6, args.Length); i++)
-                {
-                    if (string.IsNullOrWhiteSpace(args[i]))
-                        continue;
-
-                    switch (i)
-                    {
-                        case 1: // x position
-                            pos.X = TryParseOrDefault(args[i], pos.X);
-                            break;
-                        case 2: // y position
-                            pos.Y = TryParseOrDefault(args[i], pos.Y);
-                            break;
-                        case 3:
-                            scale = TryParseOrDefault(args[i], scale);
-                            break;
-                        case 4:
-                            textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), surface.FontColor);
-                            break;
-                        case 5:
-                            textShadow = args[i].Trim() is "1";
-                            break;
-                    }
-                }
-
-                // change [-1,1] top left, [1,-1] bottom right used by hudlcd to [0,0], [1,1] used by rendering
-                pos.X = (pos.X + 1) * 0.5;
-                pos.Y = (-pos.Y + 1) * 0.5;
-                scale *= 0.682; // match with original hudlcd
-
-                if (!Surfaces.TryGetValue(surface, out var data))
-                {
-                    data = new HudSpriteData(surface);
-                    Surfaces.TryAdd(surface, data);
-                }
-                else
-                {
-                    surfacesToRemove.RemoveFast(surface);
-                }
-
-                data.UpdateSettings((Vector2)pos, (float)scale, textColor, textShadow);
+                var data = new HudSpriteData(surfaceProvider, surface, surfaceIndex);
+                Surfaces.TryAdd(surface, data);
+                data.UpdateSettings();
 
                 surfaceIndex++;
             }
         }
-
-        foreach (var surface in surfacesToRemove)
-        {
-            if (Surfaces.TryRemove(surface, out var data))
-            {
-                data.Dispose();
-            }
-        }
     }
 
-    private static double TryParseOrDefault(string str, double defaultValue)
-    {
-        return double.TryParse(str, out var val) ? val : defaultValue;
-    }
-
-    private static void ClearLCDs()
+    private static void ClearLcds()
     {
         Surfaces.Values.ForEach(i => i.Dispose());
         Surfaces.Clear();
@@ -180,65 +136,167 @@ public class Plugin : IPlugin
 
     static readonly MyStringHash _fontMonospace = MyStringHash.GetOrCompute("Monospace");
 
-    private static void DrawLCDs()
+    public class HudSpriteData : IDisposable
     {
-        foreach (var item in Surfaces.Values)
+        public MyTextPanelComponent Comp { get; private set; }
+        public int SurfaceIndex { get; }
+        public Vector2 TopLeft { get; private set; }
+        public float Scale { get; private set; }
+        public Color TextColor { get; private set; }
+
+        public string? OffscreenTextureName { get; private set; }
+
+        private readonly Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider _surfaceProvider;
+        private bool _textureCreated = false;
+        private string? _prevCustomDataText = null;
+
+        public HudSpriteData(Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider block, MyTextPanelComponent comp, int surfaceIndex)
         {
-            if (item.Comp.ContentType is ContentType.TEXT_AND_IMAGE)
+            _surfaceProvider = block;
+            Comp = comp;
+            SurfaceIndex = surfaceIndex;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <returns>False if hudlcd config is not found.</returns>
+        public bool UpdateSettings()
+        {
+            string? customData = Comp.m_block.CustomData;
+            if (customData == null)
             {
-                string[] lines = item.Comp.Text.Split('\n');
+                return false;
+            }
+
+            if (customData == _prevCustomDataText)
+            {
+                return true;
+            }
+            _prevCustomDataText = customData;
+
+            string[] lines = customData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
+            int surfaceIndex = 0;
+            for (int l = 0; l < lines.Length; l++)
+            {
+                string line = lines[l];
+                if (surfaceIndex > SurfaceIndex)
+                    return false; // config for this surface not found
+
+                if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
+                    continue;
+
+                if (surfaceIndex == SurfaceIndex)
+                {
+                    Vector2D pos = _defaultPos;
+                    double scale = Comp.FontSize;
+                    Color textColor = Comp.FontColor;
+
+                    string[] args = line.Trim().Split(_configSeparator, 6);
+                    for (int i = 1; i < Math.Min(6, args.Length); i++)
+                    {
+                        if (string.IsNullOrWhiteSpace(args[i]))
+                            continue;
+
+                        switch (i)
+                        {
+                            case 1: // x position
+                                pos.X = TryParseOrDefault(args[i], pos.X);
+                                break;
+                            case 2: // y position
+                                pos.Y = TryParseOrDefault(args[i], pos.Y);
+                                break;
+                            case 3:
+                                scale = TryParseOrDefault(args[i], scale);
+                                break;
+                            case 4:
+                                textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), Comp.FontColor);
+                                break;
+                            case 5:
+                                // text shadow; not used
+                                break;
+                        }
+                    }
+
+                    // change [-1,1] top left, [1,-1] bottom right used by hudlcd to [0,0], [1,1] used by rendering
+                    pos.X = (pos.X + 1) * 0.5;
+                    pos.Y = (-pos.Y + 1) * 0.5;
+                    scale *= 0.682; // match with original hudlcd
+
+                    TopLeft = (Vector2)pos;
+                    Scale = (float)scale;
+                    TextColor = textColor;
+                    return true;
+                }
+                surfaceIndex++;
+            }
+            return false;
+        }
+
+        private static double TryParseOrDefault(string str, double defaultValue)
+        {
+            return double.TryParse(str, out var val) ? val : defaultValue;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="update10"></param>
+        /// <returns>False if this instance is invalid and should be disposed.</returns>
+        public bool Update(bool update10)
+        {
+            if (update10)
+            {
+                if (_surfaceProvider.GetSurface(SurfaceIndex) is not MyTextPanelComponent newComp)
+                {
+                    // unsure if the surface is ever null or not MyTextPanelComponent
+                    return false;
+                }
+
+                if (newComp != Comp)
+                {
+                    // surface comp changed, likely due to a surface rotation change
+                    DestroyTexture();
+                    Comp = newComp;
+                }
+
+                if (!UpdateSettings())
+                {
+                    return false;
+                }
+
+                if (Comp.m_textureGenerated && Comp.ContentType is ContentType.SCRIPT && Comp.m_block.IsWorking)
+                {
+                    CreateTexture();
+                }
+                else
+                {
+                    DestroyTexture();
+                }
+            }
+
+            if (Comp.ContentType is ContentType.TEXT_AND_IMAGE)
+            {
+                string[] lines = Comp.Text.Split('\n');
                 for (int i = 0; i < lines.Length; i++)
                 {
                     // match original hudlcd position/line spacing
                     Vector2 offset;
-                    float scale = item.Scale;
-                    if (item.Comp.Font.SubtypeId == _fontMonospace)
+                    float scale = Scale;
+                    if (Comp.Font.SubtypeId == _fontMonospace)
                     {
-                        offset = new Vector2(0, -0.0045f + (0.02825f * i)) * item.Scale;
+                        offset = new Vector2(0, -0.0045f + (0.02825f * i)) * Scale;
                         scale *= 1.018f;
                     }
                     else
                     {
-                        offset = new Vector2(0.0001f, -0.005f + (0.0229f * i)) * item.Scale;
+                        offset = new Vector2(0.0001f, -0.005f + (0.0229f * i)) * Scale;
                     }
-                    MyGuiManager.DrawString(item.Comp.Font.SubtypeId, lines[i], item.TopLeft + offset, scale, item.TextColor, useFullClientArea: true);
+                    MyGuiManager.DrawString(Comp.Font.SubtypeId, lines[i], TopLeft + offset, scale, TextColor, useFullClientArea: true);
                 }
             }
-        }
-    }
 
-    public class HudSpriteData : IDisposable
-    {
-        public MyTextPanelComponent Comp { get; }
-        public Vector2 TopLeft { get; private set; }
-        public float Scale { get; private set; }
-        public Color TextColor { get; private set; }
-        public bool TextShadow { get; private set; }
-
-        public string? OffscreenTextureName { get; private set; }
-
-        private bool _textureCreated = false;
-
-        public HudSpriteData(MyTextPanelComponent comp)
-        {
-            Comp = comp;
-        }
-
-        public void UpdateSettings(Vector2 topLeft, float scale, Color textColor, bool textShadow)
-        {
-            TopLeft = topLeft;
-            Scale = scale;
-            TextColor = textColor;
-            TextShadow = textShadow;
-
-            if (Comp.m_textureGenerated && Comp.ContentType is ContentType.SCRIPT && Comp.m_block.IsWorking)
-            {
-                CreateTexture();
-            }
-            else
-            {
-                DestroyTexture();
-            }
+            return true;
         }
 
         private void CreateTexture()
@@ -268,7 +326,7 @@ public class Plugin : IPlugin
 
         public IUserGeneratedTexture? TryGetRenderTexture()
         {
-            if (OffscreenTextureName is not null && MyManagers.FileTextures.TryGetTexture(OffscreenTextureName, out IUserGeneratedTexture texture))
+            if (OffscreenTextureName is not null && MyManagers.FileTextures.TryGetTexture(OffscreenTextureName, out IUserGeneratedTexture texture) && texture.IsLoaded)
             {
                 return texture;
             }
@@ -283,5 +341,6 @@ public class Plugin : IPlugin
 
     public void Dispose()
     {
+        ClearLcds();
     }
 }

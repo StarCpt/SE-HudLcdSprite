@@ -1,9 +1,6 @@
 ﻿using HarmonyLib;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using VRage.Game.GUI.TextPanel;
 using VRage.Render11.Common;
 using VRage.Render11.Resources;

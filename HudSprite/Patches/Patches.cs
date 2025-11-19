@@ -3,8 +3,6 @@ using Sandbox.Definitions;
 using Sandbox.Game.Components;
 using Sandbox.Game.Entities.Blocks;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using VRage.Collections;
 using VRage.Game.Definitions;
 using VRage.Game.GUI.TextPanel;

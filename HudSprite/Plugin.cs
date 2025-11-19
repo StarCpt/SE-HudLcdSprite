@@ -149,6 +149,8 @@ public class Plugin : IPlugin
         private readonly Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider _surfaceProvider;
         private bool _textureCreated = false;
         private string? _prevCustomDataText = null;
+        private float _prevCompScale;
+        private Color _prevCompColor;
 
         public HudSpriteData(Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider block, MyTextPanelComponent comp, int surfaceIndex)
         {
@@ -169,11 +171,14 @@ public class Plugin : IPlugin
                 return false;
             }
 
-            if (customData == _prevCustomDataText)
+            bool configChanged = _prevCustomDataText != customData || _prevCompScale != Comp.FontSize || _prevCompColor != Comp.FontColor;
+            if (!configChanged)
             {
                 return true;
             }
             _prevCustomDataText = customData;
+            _prevCompScale = Comp.FontSize;
+            _prevCompColor = Comp.FontColor;
 
             string[] lines = customData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
             int surfaceIndex = 0;
@@ -210,7 +215,7 @@ public class Plugin : IPlugin
                                 scale = TryParseOrDefault(args[i], scale);
                                 break;
                             case 4:
-                                textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), Comp.FontColor);
+                                textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), textColor);
                                 break;
                             case 5:
                                 // text shadow; not used

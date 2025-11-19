@@ -1,5 +1,4 @@
 ﻿using HarmonyLib;
-using Sandbox.Game.Entities.Blocks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,12 +26,11 @@ public class Patch_MyRender11_DrawGameScene
         {
             if (comp.ContentType is ContentType.TEXT_AND_IMAGE)
             {
-                // TODO
             }
             else if (comp.ContentType is ContentType.SCRIPT)
             {
                 // get srv/rtv
-                if (!TryGetRenderTexture(comp, out var tex))
+                if (data.TryGetRenderTexture() is not IUserGeneratedTexture tex)
                 {
                     continue;
                 }
@@ -73,21 +71,5 @@ public class Patch_MyRender11_DrawGameScene
         MyImmediateRC.RC.SetDepthStencilState(MyDepthStencilStateManager.IgnoreDepthStencil);
         MyImmediateRC.RC.PixelShader.SetSrv(0, source);
         MyScreenPass.DrawFullscreenQuad(MyImmediateRC.RC, viewport);
-    }
-
-    private static bool TryGetRenderTexture(MyTextPanelComponent comp, out IUserGeneratedTexture texture)
-    {
-        string name;
-        try
-        {
-            name = comp.GetRenderTextureName();
-        }
-        catch (NullReferenceException)
-        {
-            texture = null;
-            return false;
-        }
-
-        return MyManagers.FileTextures.TryGetTexture(Plugin.OFFSCREEN_TEX_PREFIX + name, out texture) && texture != null;
     }
 }

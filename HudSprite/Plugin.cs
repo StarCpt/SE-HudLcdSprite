@@ -1,7 +1,9 @@
 ﻿using HarmonyLib;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
+using Sandbox.ModAPI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,23 +11,24 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using VRage.Collections;
+using VRage.Game.GUI.TextPanel;
 using VRage.Plugins;
 using VRageMath;
+using VRageRender;
+using VRageRender.Messages;
 
 namespace HudSprite;
 
-public class LcdConfig
+public struct SurfaceConfig
 {
-    public MyTextPanel Block;
-    public Sandbox.ModAPI.Ingame.IMyTextSurface Surface;
-    public Vector2D TopLeft;
-    public double Scale;
+    public Vector2 TopLeft;
+    public float Scale;
 }
 
 public class Plugin : IPlugin
 {
     const string HUDLCD_TAG = "hudlcd";
+    public const string OFFSCREEN_TEX_PREFIX = "HUDSPRITE_";
     static readonly char _configSeparator = ':';
     static readonly Vector2D _defaultPos = new Vector2D(-0.98, -0.2);
     static readonly double _defaultScale = 0.8;
@@ -35,24 +38,18 @@ public class Plugin : IPlugin
         new Harmony(GetType().FullName).PatchAll(Assembly.GetExecutingAssembly());
     }
 
-    int _counter = 0;
-
     public void Update()
     {
-        _counter++;
-
         if (MySession.Static is null || !MySession.Static.Ready)
             return;
 
         if (MySession.Static?.ControlledEntity is MyCockpit cockpit && !cockpit.Closed)
         {
-            bool update10 = _counter % 10 == 0;
+            bool update10 = MySession.Static.GameplayFrameCounter % 10 == 0;
             if (update10)
             {
-                ClearLCDs();
                 UpdateLCDs(cockpit.CubeGrid);
             }
-
         }
         else
         {
@@ -60,28 +57,30 @@ public class Plugin : IPlugin
         }
     }
 
-    public static readonly MyConcurrentList<LcdConfig> Lcds = [];
-    public static readonly HashSet<MyTextPanelComponent> ActiveSurfaces = [];
+    public static readonly ConcurrentDictionary<MyTextPanelComponent, HudSpriteData> Surfaces = [];
+    public static readonly HashSet<string> CreatedTextures = [];
 
     private static void UpdateLCDs(MyCubeGrid grid)
     {
+        var surfacesToRemove = Surfaces.Keys.ToList();
+
         // read custom data
-        foreach (var lcd in grid.GetFatBlocks<MyTextPanel>())
+        foreach (var block in grid.GetFatBlocks<MyFunctionalBlock>())
         {
-            if (lcd.CustomData == null)
+            if (block.CustomData == null)
             {
                 continue;
             }
 
-            string[] lines = lcd.CustomData.ToLower().Split('\n');
+            string[] lines = block.CustomData.ToLower().Split('\n');
             int surfaceIndex = 0;
             foreach (var line in lines)
             {
-                if (surfaceIndex >= Math.Max(1, lcd.SurfaceCount))
+                if (surfaceIndex >= Math.Max(1, block.SurfaceCount))
                     break;
 
                 if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
-                continue;
+                    continue;
 
                 Vector2D pos = _defaultPos;
                 double scale = _defaultScale;
@@ -119,25 +118,97 @@ public class Plugin : IPlugin
                 pos.X = (pos.X + 1) * 0.5;
                 pos.Y = (-pos.Y + 1) * 0.5;
 
-                var surface = lcd.SurfaceCount is 0 ? lcd.PanelComponent : (MyTextPanelComponent)lcd.GetSurface(surfaceIndex);
-                Lcds.Add(new LcdConfig
+                if ((block as IMyTextSurfaceProvider)?.GetSurface(surfaceIndex) is not MyTextPanelComponent surface)
                 {
-                    Block = lcd,
-                    Surface = surface,
-                    TopLeft = pos,
-                    Scale = scale,
-                });
-                ActiveSurfaces.Add(surface);
+                    continue;
+                }
+
+                if (!Surfaces.TryGetValue(surface, out var data))
+                {
+                    data = new HudSpriteData(surface);
+                    Surfaces.TryAdd(surface, data);
+                }
+                else
+                {
+                    surfacesToRemove.RemoveFast(surface);
+                }
+
+                data.Update((Vector2)pos, (float)scale);
 
                 surfaceIndex++;
+            }
+        }
+
+        foreach (var surface in surfacesToRemove)
+        {
+            if (Surfaces.TryRemove(surface, out var data))
+            {
+                data.Dispose();
             }
         }
     }
 
     private static void ClearLCDs()
     {
-        Lcds.Clear();
-        ActiveSurfaces.Clear();
+        Surfaces.Values.ForEach(i => i.Dispose());
+        Surfaces.Clear();
+    }
+
+    public class HudSpriteData : IDisposable
+    {
+        public MyTextPanelComponent Comp { get; }
+        public Vector2 TopLeft { get; private set; }
+        public float Scale { get; private set; }
+
+        private bool _textureCreated = false;
+
+        public HudSpriteData(MyTextPanelComponent comp)
+        {
+            Comp = comp;
+        }
+
+        public void Update(Vector2 topLeft, float scale)
+        {
+            TopLeft = topLeft;
+            Scale = scale;
+
+            if (Comp.m_textureGenerated && Comp.ContentType is ContentType.SCRIPT && Comp.m_block.IsWorking)
+            {
+                CreateTexture();
+            }
+            else
+            {
+                DestroyTexture();
+            }
+        }
+
+        private void CreateTexture()
+        {
+            if (!_textureCreated)
+            {
+                _textureCreated = true;
+                string name = OFFSCREEN_TEX_PREFIX + Comp.GetRenderTextureName();
+                MyRenderProxy.CreateGeneratedTexture(name, Comp.m_textureSize.X, Comp.m_textureSize.Y, MyGeneratedTextureType.RGBA, 1, null, generateMipmaps: true, immediatelyReady: false);
+                Comp.m_lastRenderLayers.Clear();
+                CreatedTextures.Add(name);
+            }
+        }
+
+        private void DestroyTexture()
+        {
+            if (_textureCreated)
+            {
+                _textureCreated = false;
+                string name = OFFSCREEN_TEX_PREFIX + Comp.GetRenderTextureName();
+                MyRenderProxy.DestroyGeneratedTexture(name);
+                CreatedTextures.Remove(name);
+            }
+        }
+
+        public void Dispose()
+        {
+            DestroyTexture();
+        }
     }
 
     public void Dispose()

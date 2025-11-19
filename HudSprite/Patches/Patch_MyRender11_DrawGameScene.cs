@@ -23,37 +23,33 @@ public class Patch_MyRender11_DrawGameScene
             return;
         }
 
-        foreach (var lcd in Plugin.Lcds)
+        foreach (var (comp, data) in Plugin.Surfaces)
         {
-            if (lcd.Block.Closed || !lcd.Block.InScene)
-                continue;
-
-            if (lcd.Surface.ContentType is ContentType.TEXT_AND_IMAGE)
+            if (comp.ContentType is ContentType.TEXT_AND_IMAGE)
             {
                 // TODO
             }
-            else if (lcd.Surface.ContentType is ContentType.SCRIPT)
+            else if (comp.ContentType is ContentType.SCRIPT)
             {
                 // get srv/rtv
-                var comp = (MyTextPanelComponent)lcd.Surface;
                 if (!TryGetRenderTexture(comp, out var tex))
                 {
-                    return;
+                    continue;
                 }
 
                 var vp = new MyViewport(
-                    (float)lcd.TopLeft.X * renderTarget.Size.X,
-                    (float)lcd.TopLeft.Y * renderTarget.Size.Y,
-                    tex.Size.X * (float)lcd.Scale,
-                    tex.Size.Y * (float)lcd.Scale);
-                CopyReplaceNoAlpha(renderTarget, tex, vp, true);
+                    data.TopLeft.X * renderTarget.Size.X,
+                    data.TopLeft.Y * renderTarget.Size.Y,
+                    comp.SurfaceSize.X * data.Scale,
+                    comp.SurfaceSize.Y * data.Scale);
+                CopyAlphaPremult(renderTarget, tex, vp, true);
             }
         }
     }
 
-    private static void CopyReplaceNoAlpha(IRtvBindable destination, ISrvBindable source, MyViewport viewport, bool shouldStretch = false)
+    private static void CopyAlphaPremult(IRtvBindable destination, ISrvBindable source, MyViewport viewport, bool shouldStretch = false)
     {
-        MyImmediateRC.RC.SetBlendState(MyBlendStateManager.BlendAlphaPremultNoAlphaChannel);
+        MyImmediateRC.RC.SetBlendState(MyBlendStateManager.BlendAlphaPremult);
 
         MyImmediateRC.RC.SetInputLayout(null);
         if (source.Size != destination.Size || shouldStretch)
@@ -92,6 +88,6 @@ public class Patch_MyRender11_DrawGameScene
             return false;
         }
 
-        return MyManagers.FileTextures.TryGetTexture(name, out texture) && texture != null;
+        return MyManagers.FileTextures.TryGetTexture(Plugin.OFFSCREEN_TEX_PREFIX + name, out texture) && texture != null;
     }
 }

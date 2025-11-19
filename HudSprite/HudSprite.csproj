@@ -85,6 +85,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Publicize Include="Sandbox.Game" IncludeCompilerGeneratedMembers="false" />
     <Publicize Include="VRage.Render" IncludeCompilerGeneratedMembers="false" />
     <Publicize Include="VRage.Render11" IncludeCompilerGeneratedMembers="false" />
   </ItemGroup>

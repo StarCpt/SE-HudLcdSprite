@@ -32,6 +32,7 @@ public partial class Plugin
         public Color TextColor { get; private set; }
 
         public string? OffscreenTextureName { get; private set; }
+        public bool ShouldDraw { get; private set; } = true;
 
         private readonly Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider _surfaceProvider;
         private bool _textureCreated = false;
@@ -189,7 +190,9 @@ public partial class Plugin
                     return false;
                 }
 
-                if (Comp.m_textureGenerated && Comp.ContentType is ContentType.SCRIPT && Comp.m_block.IsWorking)
+                ShouldDraw = !_blocksToNotDraw.Contains(Comp.m_block.EntityId);
+
+                if (ShouldDraw && Comp.m_textureGenerated && Comp.ContentType is ContentType.SCRIPT && Comp.m_block.IsWorking)
                 {
                     CreateTexture();
                 }
@@ -199,7 +202,7 @@ public partial class Plugin
                 }
             }
 
-            if (Comp.ContentType is ContentType.TEXT_AND_IMAGE)
+            if (ShouldDraw && Comp.ContentType is ContentType.TEXT_AND_IMAGE)
             {
                 var screenWidth = MyGuiManager.GetFullscreenRectangle().Width;
                 var font = MyFontDefinition.GetFont(Comp.Font.SubtypeId);

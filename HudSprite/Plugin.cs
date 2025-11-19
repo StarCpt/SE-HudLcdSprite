@@ -25,6 +25,7 @@ public partial class Plugin : IPlugin
 
     private int _lastLcdGather = -1;
     private readonly List<MyTextPanelComponent> _lcdsToRemove = [];
+    private static readonly HashSet<long> _blocksToNotDraw = [];
 
     public void Update()
     {
@@ -116,6 +117,23 @@ public partial class Plugin : IPlugin
         {
             Surfaces.Values.ForEach(i => i.Dispose());
             Surfaces.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Overrides the draw state of a text panel surface.
+    /// </summary>
+    /// <param name="blockId">Entity id of the block.</param>
+    /// <param name="shouldDraw">True by default, set false to disable hud visibility for surfaces owned by this block.</param>
+    public static void SetDrawState(long blockId, bool shouldDraw)
+    {
+        if (!shouldDraw)
+        {
+            _blocksToNotDraw.Add(blockId);
+        }
+        else
+        {
+            _blocksToNotDraw.Remove(blockId);
         }
     }
 

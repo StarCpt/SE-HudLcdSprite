@@ -23,10 +23,7 @@ public class Patch_MyRender11_DrawGameScene
 
         foreach (var (comp, data) in Plugin.Surfaces)
         {
-            if (comp.ContentType is ContentType.TEXT_AND_IMAGE)
-            {
-            }
-            else if (comp.ContentType is ContentType.SCRIPT)
+            if (data.ShouldDraw && comp.ContentType is ContentType.SCRIPT)
             {
                 IBlendState blendState;
                 IUserGeneratedTexture? sourceTex;

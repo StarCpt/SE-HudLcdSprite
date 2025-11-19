@@ -4,11 +4,13 @@ using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
 using Sandbox.Graphics;
+using Sandbox.Graphics.GUI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using VRage.Game.Definitions;
 using VRage.Game.GUI.TextPanel;
 using VRage.Plugins;
 using VRage.Render11.Common;
@@ -282,26 +284,117 @@ public class Plugin : IPlugin
 
             if (Comp.ContentType is ContentType.TEXT_AND_IMAGE)
             {
+                var screenSize = MyGuiManager.GetFullscreenRectangle();
+                var font = MyFontDefinition.GetFont(Comp.Font.SubtypeId);
+
                 string[] lines = Comp.Text.Split('\n');
-                for (int i = 0; i < lines.Length; i++)
+                for (int l = 0; l < lines.Length; l++)
                 {
                     // match original hudlcd position/line spacing
                     Vector2 offset;
                     float scale = Scale;
                     if (Comp.Font.SubtypeId == _fontMonospace)
                     {
-                        offset = new Vector2(0, -0.0045f + (0.02825f * i)) * Scale;
+                        offset = new Vector2(0, -0.0045f + (0.02825f * l)) * Scale;
                         scale *= 1.018f;
                     }
                     else
                     {
-                        offset = new Vector2(0.0001f, -0.005f + (0.0229f * i)) * Scale;
+                        offset = new Vector2(0.0001f, -0.005f + (0.0229f * l)) * Scale;
                     }
-                    MyGuiManager.DrawString(Comp.Font.SubtypeId, lines[i], TopLeft + offset, scale, TextColor, useFullClientArea: true);
+
+                    var line = lines[l];
+                    const string COLOR_TAG_START = "<color=";
+                    const char COLOR_TAG_END = '>';
+
+                    float xOffset = 0;
+
+                    string[] candidates = line.Split([COLOR_TAG_START], StringSplitOptions.None);
+                    Color prevColor = TextColor;
+                    foreach (var candidate in candidates)
+                    {
+                        int end = candidate.IndexOf(COLOR_TAG_END);
+                        Color color = default;
+                        bool colorValid = false;
+                        if (end >= 0)
+                        {
+                            string colorName = candidate.Substring(0, end);
+                            if (_colorByName.TryGetValue(colorName, out color))
+                            {
+                                colorValid = true;
+                            }
+                            else
+                            {
+                                string[] args = colorName.Split([','], 4);
+                                if (args.Length == 3)
+                                {
+                                    // only rgb
+                                    if (byte.TryParse(args[0], out byte r) &&
+                                        byte.TryParse(args[1], out byte g) &&
+                                        byte.TryParse(args[2], out byte b))
+                                    {
+                                        color = new Color(r, g, b);
+                                        colorValid = true;
+                                    }
+                                }
+                                else if (args.Length == 4)
+                                {
+                                    // rgba
+                                    if (byte.TryParse(args[0], out byte r) &&
+                                        byte.TryParse(args[1], out byte g) &&
+                                        byte.TryParse(args[2], out byte b) &&
+                                        byte.TryParse(args[3], out byte a))
+                                    {
+                                        color = new Color(r, g, b, a);
+                                        colorValid = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!colorValid)
+                        {
+                            color = prevColor;
+                        }
+                        prevColor = color;
+
+                        string textToDraw;
+                        if (!colorValid || end <= 0)
+                        {
+                            // invalid or malformed color tag
+                            textToDraw = xOffset is 0 ? candidate : $"{COLOR_TAG_START}{candidate}";
+                        }
+                        else
+                        {
+                            if (candidate.Length - (end + 1) <= 0)
+                            {
+                                // valid color tag but no text to draw after the closing char
+                                continue;
+                            }
+
+                            textToDraw = candidate.Substring(end + 1);
+                        }
+
+                        Vector2 pos = TopLeft + offset + new Vector2(xOffset, 0);
+                        DrawString(textToDraw, pos, scale, color);
+                        xOffset += GetStringWidth(textToDraw, font, scale, screenSize.Width);
+                    }
                 }
             }
 
             return true;
+        }
+
+        // use this instead of MyGuiManager.DrawString() to avoid snapping positions to pixels
+        private void DrawString(string text, Vector2 pos, float scale, Color color)
+        {
+            Vector2 normalizedPos = MyGuiManager.GetScreenCoordinateFromNormalizedCoordinate(pos, true);
+            MyRenderProxy.DrawString((int)Comp.Font.SubtypeId, normalizedPos, color, text, scale, float.PositiveInfinity, true);
+        }
+
+        private float GetStringWidth(string text, MyFont font, float scale, float screenWidth)
+        {
+            return (font.MeasureString(text, scale, false).X + scale) * MyGuiConstants.FONT_SCALE / screenWidth;
         }
 
         private void CreateTexture()

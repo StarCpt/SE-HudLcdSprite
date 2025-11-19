@@ -72,24 +72,27 @@ public class Plugin : IPlugin
             _lastLcdGather = -1;
         }
 
-        // update surfaces
-        bool update10 = MySession.Static.GameplayFrameCounter % 10 == 0;
-        foreach (var data in Surfaces.Values)
+        if (Surfaces.Count > 0)
         {
-            if (!data.Update(update10))
+            // update surfaces
+            bool update10 = MySession.Static.GameplayFrameCounter % 10 == 0;
+            foreach (var data in Surfaces.Values)
             {
-                _lcdsToRemove.Add(data.Comp);
+                if (!data.Update(update10))
+                {
+                    _lcdsToRemove.Add(data.Comp);
+                }
             }
-        }
 
-        // remove invalid lcds
-        for (int i = _lcdsToRemove.Count - 1; i >= 0; i--)
-        {
-            if (Surfaces.TryRemove(_lcdsToRemove[i], out var data))
+            // remove invalid lcds
+            for (int i = _lcdsToRemove.Count - 1; i >= 0; i--)
             {
-                data.Dispose();
+                if (Surfaces.TryRemove(_lcdsToRemove[i], out var data))
+                {
+                    data.Dispose();
+                }
+                _lcdsToRemove.RemoveAt(i);
             }
-            _lcdsToRemove.RemoveAt(i);
         }
     }
 
@@ -132,8 +135,11 @@ public class Plugin : IPlugin
 
     private static void ClearLcds()
     {
-        Surfaces.Values.ForEach(i => i.Dispose());
-        Surfaces.Clear();
+        if (Surfaces.Count > 0)
+        {
+            Surfaces.Values.ForEach(i => i.Dispose());
+            Surfaces.Clear();
+        }
     }
 
     static readonly MyStringHash _fontMonospace = MyStringHash.GetOrCompute("Monospace");

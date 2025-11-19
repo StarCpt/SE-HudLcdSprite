@@ -1,9 +1,11 @@
 ﻿using HarmonyLib;
+using Sandbox.Game.Entities.Blocks;
 using System;
 using System.Linq;
 using VRage.Game.GUI.TextPanel;
 using VRage.Render11.Common;
 using VRage.Render11.Resources;
+using VRage.Render11.Resources.Internal;
 using VRageRender;
 
 namespace HudSprite.Patches;
@@ -26,8 +28,22 @@ public class Patch_MyRender11_DrawGameScene
             }
             else if (comp.ContentType is ContentType.SCRIPT)
             {
-                // get srv/rtv
-                if (data.TryGetRenderTexture() is not IUserGeneratedTexture tex)
+                IBlendState blendState;
+                IUserGeneratedTexture? sourceTex;
+
+                // camera lcd (remastered) compatibility
+                if (data.Comp.Script == "TSS_CameraDisplay_2")
+                {
+                    blendState = MyBlendStateManager.BlendReplaceNoAlphaChannel;
+                    sourceTex = TryGetCameraLcdRtv(data.Comp);
+                }
+                else
+                {
+                    blendState = MyBlendStateManager.BlendAlphaPremult;
+                    sourceTex = data.TryGetRenderTexture();
+                }
+
+                if (sourceTex is null)
                 {
                     continue;
                 }
@@ -37,14 +53,36 @@ public class Patch_MyRender11_DrawGameScene
                     data.TopLeft.Y * renderTarget.Size.Y,
                     comp.SurfaceSize.X * data.Scale,
                     comp.SurfaceSize.Y * data.Scale);
-                CopyAlphaPremult(renderTarget, tex, vp, true);
+                CopyWithBlendState(blendState, renderTarget, sourceTex, vp, true);
             }
         }
     }
 
-    private static void CopyAlphaPremult(IRtvBindable destination, ISrvBindable source, MyViewport viewport, bool shouldStretch = false)
+    private static IUserGeneratedTexture? TryGetCameraLcdRtv(MyTextPanelComponent comp)
     {
-        MyImmediateRC.RC.SetBlendState(MyBlendStateManager.BlendAlphaPremult);
+        string? rtvName = null;
+        try
+        {
+            if (comp.m_block != null && comp.Render != null)
+            {
+                rtvName = comp.GetRenderTextureName();
+            }
+        }
+        catch (NullReferenceException)
+        {
+            return null;
+        }
+
+        if (rtvName is not null && MyManagers.FileTextures.TryGetTexture(rtvName, out IUserGeneratedTexture texture) && texture.IsLoaded)
+        {
+            return texture;
+        }
+        return null;
+    }
+
+    private static void CopyWithBlendState(IBlendState blend, IRtvBindable destination, ISrvBindable source, MyViewport viewport, bool shouldStretch = false)
+    {
+        MyImmediateRC.RC.SetBlendState(blend);
 
         MyImmediateRC.RC.SetInputLayout(null);
         if (source.Size != destination.Size || shouldStretch)

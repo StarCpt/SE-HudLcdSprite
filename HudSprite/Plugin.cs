@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using VRage.Plugins;
-using VRageMath;
 
 namespace HudSprite;
 
@@ -18,11 +17,6 @@ public partial class Plugin : IPlugin
     const string HUDLCD_TAG = "hudlcd";
     public const string OFFSCREEN_TEX_PREFIX = "HUDSPRITE_";
     static readonly char[] _newline = ['\n'];
-
-    static readonly Dictionary<string, Color> _colorByName =
-        typeof(Color).GetProperties(BindingFlags.Public | BindingFlags.Static)
-            .Where(p => p.CanRead && p.PropertyType == typeof(Color))
-            .ToDictionary(p => p.Name.ToLower(), p => (Color)p.GetValue(null));
 
     public void Init(object gameInstance)
     {

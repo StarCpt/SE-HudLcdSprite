@@ -3,6 +3,8 @@ using Sandbox.Graphics;
 using Sandbox.Graphics.GUI;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using VRage.Game.Definitions;
 using VRage.Game.GUI.TextPanel;
 using VRage.Render11.Common;
@@ -16,6 +18,11 @@ namespace HudSprite;
 
 public partial class Plugin
 {
+    static readonly Dictionary<string, Color> _colorByName =
+        typeof(Color).GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.CanRead && p.PropertyType == typeof(Color))
+            .ToDictionary(p => p.Name.ToLower(), p => (Color)p.GetValue(null));
+
     public class HudSpriteSurface : IDisposable
     {
         public MyTextPanelComponent Comp { get; private set; }

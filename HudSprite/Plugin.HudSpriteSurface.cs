@@ -367,10 +367,9 @@ public partial class Plugin
 
         private void CreateTexture()
         {
-            if (!_textureCreated)
+            if (!_textureCreated && TryGetTextureName() is string name)
             {
                 _textureCreated = true;
-                string name = OFFSCREEN_TEX_PREFIX + Comp.GetRenderTextureName();
                 MyRenderProxy.CreateGeneratedTexture(name, Comp.m_textureSize.X, Comp.m_textureSize.Y, MyGeneratedTextureType.RGBA, 1, null, generateMipmaps: true, immediatelyReady: false);
                 Comp.m_lastRenderLayers.Clear();
                 CreatedTextures.Add(name);
@@ -380,13 +379,28 @@ public partial class Plugin
 
         private void DestroyTexture()
         {
-            if (_textureCreated)
+            if (_textureCreated && OffscreenTextureName != null)
             {
                 _textureCreated = false;
-                string name = OFFSCREEN_TEX_PREFIX + Comp.GetRenderTextureName();
-                MyRenderProxy.DestroyGeneratedTexture(name);
-                CreatedTextures.Remove(name);
+                MyRenderProxy.DestroyGeneratedTexture(OffscreenTextureName);
+                CreatedTextures.Remove(OffscreenTextureName);
                 OffscreenTextureName = null;
+            }
+        }
+
+        private string? TryGetTextureName() // texture name of the HUDSPRITE_ prefixed texture, not the lcd's texture
+        {
+            try
+            {
+                if (Comp.m_block != null && Comp.Render != null && Comp.GetRenderTextureName() is string lcdRtvName)
+                {
+                    return OFFSCREEN_TEX_PREFIX + lcdRtvName;
+                }
+                return null;
+            }
+            catch (NullReferenceException)
+            {
+                return null;
             }
         }
 

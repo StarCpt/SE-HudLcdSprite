@@ -3,6 +3,7 @@ using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
+using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -81,9 +82,17 @@ public partial class Plugin : IPlugin
     {
         foreach (var block in grid.GetFatBlocks<MyTerminalBlock>())
         {
-            if (block.CustomData == null || block is not Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider surfaceProvider)
+            if (block is not IMyTextSurfaceProvider surfaceProvider)
             {
                 continue;
+            }
+
+            if (block is MyTextPanel panel && panel.PublicTitle.ToString().StartsWith(HUDLCD_TAG))
+            {
+                if (TryAddSurface(surfaceProvider, 0))
+                {
+                    continue;
+                }
             }
 
             string[] lines = block.CustomData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
@@ -96,18 +105,25 @@ public partial class Plugin : IPlugin
                 if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
                     continue;
 
-                if (surfaceProvider.GetSurface(surfaceIndex) is not MyTextPanelComponent surface)
-                    continue;
-
-                if (Surfaces.ContainsKey(surface))
-                    continue;
-
-                var data = new HudSpriteSurface(surfaceProvider, surface, surfaceIndex);
-                Surfaces.TryAdd(surface, data);
-                data.UpdateSettings();
-
-                surfaceIndex++;
+                if (TryAddSurface(surfaceProvider, surfaceIndex))
+                {
+                    surfaceIndex++;
+                }
             }
+        }
+
+        static bool TryAddSurface(IMyTextSurfaceProvider surfaceProvider, int surfaceIndex)
+        {
+            if (surfaceProvider.GetSurface(surfaceIndex) is not MyTextPanelComponent surface)
+                return false;
+
+            if (Surfaces.ContainsKey(surface))
+                return false;
+
+            var data = new HudSpriteSurface(surfaceProvider, surface, surfaceIndex);
+            data.UpdateSettings();
+            Surfaces.TryAdd(surface, data);
+            return true;
         }
     }
 

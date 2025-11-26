@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using VRage.Game.Definitions;
 using VRage.Game.GUI.TextPanel;
 using VRage.Render11.Common;
@@ -27,15 +28,22 @@ public partial class Plugin
     {
         public MyTextPanelComponent Comp { get; private set; }
         public int SurfaceIndex { get; }
-        public Vector2 TopLeft { get; private set; }
-        public float Scale { get; private set; }
-        public Color TextColor { get; private set; }
+        public Vector2 TopLeft => _topLeft;
+        public float Scale => _scale;
+        public Color TextColor => _textColor;
+
+        private Vector2 _topLeft;
+        private float _scale;
+        private Color _textColor;
 
         public string? OffscreenTextureName { get; private set; }
         public bool ShouldDraw { get; private set; } = true;
 
         private readonly Sandbox.ModAPI.Ingame.IMyTextSurfaceProvider _surfaceProvider;
         private bool _textureCreated = false;
+        private readonly StringBuilder? _publicTitle;
+        private bool? _configFromTitle = null;
+        private string? _prevPublicTitle = null;
         private string? _prevCustomDataText = null;
         private float _prevCompScale;
         private Color _prevCompColor;
@@ -45,6 +53,7 @@ public partial class Plugin
             _surfaceProvider = block;
             Comp = comp;
             SurfaceIndex = surfaceIndex;
+            _publicTitle = (surfaceIndex == 0 && comp.m_block is MyTextPanel panel) ? panel.PublicTitle : null;
         }
 
         static readonly char[] _configSeparator = [':'];
@@ -56,77 +65,110 @@ public partial class Plugin
         /// <returns>False if hudlcd config is not found.</returns>
         public bool UpdateSettings()
         {
-            string? customData = Comp.m_block.CustomData;
-            if (customData == null)
+            bool configChanged = false;
+            if (_configFromTitle == true)
             {
-                return false;
+                configChanged = _prevPublicTitle != _publicTitle?.ToString();
             }
+            else if (_configFromTitle == false)
+            {
+                configChanged = _prevCustomDataText != Comp.m_block.CustomData;
+            }
+            else
+            {
+                configChanged = true;
+            }
+            configChanged |= _prevCompScale != Comp.FontSize || _prevCompColor != Comp.FontColor;
 
-            bool configChanged = _prevCustomDataText != customData || _prevCompScale != Comp.FontSize || _prevCompColor != Comp.FontColor;
             if (!configChanged)
             {
                 return true;
             }
-            _prevCustomDataText = customData;
+            _prevCustomDataText = Comp.m_block.CustomData;
             _prevCompScale = Comp.FontSize;
             _prevCompColor = Comp.FontColor;
 
-            string[] lines = customData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
-            int surfaceIndex = 0;
-            for (int l = 0; l < lines.Length; l++)
+            if (SurfaceIndex == 0 && _publicTitle != null)
             {
-                string line = lines[l];
-                if (surfaceIndex > SurfaceIndex)
-                    return false; // config for this surface not found
-
-                if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
-                    continue;
-
-                if (surfaceIndex == SurfaceIndex)
+                string publicTitle = _publicTitle.ToString();
+                _prevPublicTitle = publicTitle;
+                if (publicTitle.StartsWith(HUDLCD_TAG))
                 {
-                    Vector2D pos = _defaultPos;
-                    double scale = Comp.FontSize;
-                    Color textColor = Comp.FontColor;
-
-                    string[] args = line.Trim().Split(_configSeparator, 6);
-                    for (int i = 1; i < Math.Min(6, args.Length); i++)
-                    {
-                        if (string.IsNullOrWhiteSpace(args[i]))
-                            continue;
-
-                        switch (i)
-                        {
-                            case 1: // x position
-                                pos.X = TryParseOrDefault(args[i], pos.X);
-                                break;
-                            case 2: // y position
-                                pos.Y = TryParseOrDefault(args[i], pos.Y);
-                                break;
-                            case 3:
-                                scale = TryParseOrDefault(args[i], scale);
-                                break;
-                            case 4:
-                                textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), textColor);
-                                break;
-                            case 5:
-                                // text shadow; not used
-                                break;
-                        }
-                    }
-
-                    // change [-1,1] top left, [1,-1] bottom right used by hudlcd to [0,0], [1,1] used by rendering
-                    pos.X = (pos.X + 1) * 0.5;
-                    pos.Y = (-pos.Y + 1) * 0.5;
-                    scale *= 0.682; // match with original hudlcd
-
-                    TopLeft = (Vector2)pos;
-                    Scale = (float)scale;
-                    TextColor = textColor;
+                    ParseConfig(Comp, publicTitle, out _topLeft, out _scale, out _textColor);
+                    _configFromTitle = true;
                     return true;
                 }
-                surfaceIndex++;
             }
+            else
+            {
+                _prevPublicTitle = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Comp.m_block.CustomData))
+            {
+                string[] lines = Comp.m_block.CustomData.ToLower().Split(_newline, StringSplitOptions.RemoveEmptyEntries);
+                int surfaceIndex = 0;
+                for (int l = 0; l < lines.Length; l++)
+                {
+                    string line = lines[l];
+                    if (surfaceIndex > SurfaceIndex)
+                        break; // config for this surface not found
+
+                    if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
+                        continue;
+
+                    if (surfaceIndex == SurfaceIndex)
+                    {
+                        ParseConfig(Comp, line, out _topLeft, out _scale, out _textColor);
+                        _configFromTitle = false;
+                        return true;
+                    }
+                    surfaceIndex++;
+                }
+            }
+            _configFromTitle = null;
             return false;
+        }
+
+        private static void ParseConfig(MyTextPanelComponent comp, string text, out Vector2 topLeft, out float scale, out Color textColor)
+        {
+            Vector2D posD = _defaultPos;
+            double scaleD = comp.FontSize;
+            textColor = comp.FontColor;
+
+            string[] args = text.Trim().Split(_configSeparator, 6);
+            for (int i = 1; i < Math.Min(6, args.Length); i++)
+            {
+                if (string.IsNullOrWhiteSpace(args[i]))
+                    continue;
+
+                switch (i)
+                {
+                    case 1: // x position
+                        posD.X = TryParseOrDefault(args[i], posD.X);
+                        break;
+                    case 2: // y position
+                        posD.Y = TryParseOrDefault(args[i], posD.Y);
+                        break;
+                    case 3:
+                        scaleD = (float)TryParseOrDefault(args[i], scaleD);
+                        break;
+                    case 4:
+                        textColor = _colorByName.GetValueOrDefault(args[i].Trim().ToLower(), textColor);
+                        break;
+                    case 5:
+                        // text shadow; not used
+                        break;
+                }
+            }
+
+            // change [-1,1] top left, [1,-1] bottom right used by hudlcd to [0,0], [1,1] used by rendering
+            posD.X = (posD.X + 1) * 0.5;
+            posD.Y = (-posD.Y + 1) * 0.5;
+            scaleD *= 0.682; // match with original hudlcd
+
+            topLeft = (Vector2)posD;
+            scale = (float)scaleD;
         }
 
         private static double TryParseOrDefault(string str, double defaultValue)

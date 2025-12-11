@@ -248,6 +248,7 @@ public partial class Plugin
             {
                 var screenWidth = MyGuiManager.GetFullscreenRectangle().Width;
                 var font = MyFontDefinition.GetFont(Comp.Font.SubtypeId);
+                Color color = TextColor;
 
                 string[] lines = Comp.Text.Split('\n');
                 for (int l = 0; l < lines.Length; l++)
@@ -310,7 +311,6 @@ public partial class Plugin
                     if (tokens.Count > 1) // always has at least 1 LineStart token
                     {
                         float xOffset = 0;
-                        Color color = TextColor;
 
                         int prevSegmentEndIndex = 0;
                         for (int t = 0; t < tokens.Count; t++)
@@ -351,7 +351,7 @@ public partial class Plugin
                     }
                     else
                     {
-                        DrawString(line, TopLeft + offset, scale, TextColor);
+                        DrawString(line, TopLeft + offset, scale, color);
                     }
                 }
             }

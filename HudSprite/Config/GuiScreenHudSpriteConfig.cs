@@ -39,7 +39,7 @@ public class GuiScreenHudSpriteConfig : MyGuiScreenBase
     {
         base.RecreateControls(constructor);
 
-        AddCaption("SSGI Settings");
+        AddCaption("HudLcd 3 Settings");
 
         float rowHeight = 0.05f;
 

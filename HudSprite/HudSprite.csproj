@@ -5,7 +5,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>HudSprite</RootNamespace>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <LangVersion>13</LangVersion>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 

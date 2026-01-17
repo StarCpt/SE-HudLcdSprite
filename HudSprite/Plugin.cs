@@ -43,7 +43,7 @@ public partial class Plugin : IPlugin
 
     public void Update()
     {
-        if (MySession.Static is null || !MySession.Static.Ready)
+        if (MySession.Static is null || !MySession.Static.Ready || !Settings.Enabled)
         {
             ClearLcds();
             _lastLcdGather = -1;

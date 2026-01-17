@@ -1,14 +1,18 @@
 ﻿using HarmonyLib;
+using HudSprite.Config;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
+using Sandbox.Graphics.GUI;
 using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using VRage.FileSystem;
 using VRage.Plugins;
 
 namespace HudSprite;
@@ -19,10 +23,19 @@ public partial class Plugin : IPlugin
     public const string OFFSCREEN_TEX_PREFIX = "HUDSPRITE_";
     static readonly char[] _newline = ['\n'];
 
+    public static HudSpriteSettings Settings = null!;
+
+    public Plugin()
+    {
+        Settings = HudSpriteSettings.LoadOrCreate(Path.Combine(MyFileSystem.UserDataPath, "Storage", "HudSpriteSettings.json"));
+    }
+
     public void Init(object gameInstance)
     {
         new Harmony(GetType().FullName).PatchAll(Assembly.GetExecutingAssembly());
     }
+
+    public void OpenConfigDialog() => MyGuiSandbox.AddScreen(new GuiScreenHudSpriteConfig(Settings));
 
     private int _lastLcdGather = -1;
     private readonly List<MyTextPanelComponent> _lcdsToRemove = [];
@@ -102,7 +115,8 @@ public partial class Plugin : IPlugin
                 if (surfaceIndex >= Math.Max(1, surfaceProvider.SurfaceCount))
                     break;
 
-                if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
+                bool tagFound = Settings.ScanAllText ? line.Contains(HUDLCD_TAG) : line.StartsWith(HUDLCD_TAG);
+                if (string.IsNullOrWhiteSpace(line) || !tagFound)
                     continue;
 
                 if (TryAddSurface(surfaceProvider, surfaceIndex))

@@ -15,6 +15,10 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="netstandard" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(AppData)\Pulsar\Libraries\Legacy\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="ProtoBuf.Net">
       <HintPath>$(Bin64)\ProtoBuf.Net.dll</HintPath>
       <Private>False</Private>

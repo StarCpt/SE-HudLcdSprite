@@ -63,27 +63,31 @@ public partial class Plugin
         /// 
         /// </summary>
         /// <returns>False if hudlcd config is not found.</returns>
-        public bool UpdateSettings()
+        public bool UpdateSettings(bool forced = false)
         {
-            bool configChanged = false;
-            if (_configFromTitle == true)
+            if (!forced)
             {
-                configChanged = _prevPublicTitle != _publicTitle?.ToString();
-            }
-            else if (_configFromTitle == false)
-            {
-                configChanged = _prevCustomDataText != Comp.m_block.CustomData;
-            }
-            else
-            {
-                configChanged = true;
-            }
-            configChanged |= _prevCompScale != Comp.FontSize || _prevCompColor != Comp.FontColor;
+                bool configChanged = false;
+                if (_configFromTitle == true)
+                {
+                    configChanged = _prevPublicTitle != _publicTitle?.ToString();
+                }
+                else if (_configFromTitle == false)
+                {
+                    configChanged = _prevCustomDataText != Comp.m_block.CustomData;
+                }
+                else
+                {
+                    configChanged = true;
+                }
+                configChanged |= _prevCompScale != Comp.FontSize || _prevCompColor != Comp.FontColor;
 
-            if (!configChanged)
-            {
-                return true;
+                if (!configChanged)
+                {
+                    return true;
+                }
             }
+
             _prevCustomDataText = Comp.m_block.CustomData;
             _prevCompScale = Comp.FontSize;
             _prevCompColor = Comp.FontColor;
@@ -114,7 +118,8 @@ public partial class Plugin
                     if (surfaceIndex > SurfaceIndex)
                         break; // config for this surface not found
 
-                    if (string.IsNullOrWhiteSpace(line) || !line.StartsWith(HUDLCD_TAG))
+                    bool tagFound = Settings.ScanAllText ? line.Contains(HUDLCD_TAG) : line.StartsWith(HUDLCD_TAG);
+                    if (string.IsNullOrWhiteSpace(line) || !tagFound)
                         continue;
 
                     if (surfaceIndex == SurfaceIndex)
@@ -136,7 +141,8 @@ public partial class Plugin
             double scaleD = comp.FontSize;
             textColor = comp.FontColor;
 
-            string[] args = text.Trim().Split(_configSeparator, 6);
+            int tagIndex = text.IndexOf(HUDLCD_TAG);
+            string[] args = text.Substring(tagIndex).Trim().Split(_configSeparator, 6);
             for (int i = 1; i < Math.Min(6, args.Length); i++)
             {
                 if (string.IsNullOrWhiteSpace(args[i]))
